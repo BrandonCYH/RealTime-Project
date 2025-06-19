@@ -1,50 +1,35 @@
 package com.example.realtimeproject.springproducer;
 
-import org.apache.kafka.clients.producer.*;
-import org.apache.kafka.common.serialization.StringSerializer;
+import com.example.realtimeproject.Model.YouTubeData;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.stereotype.Service;
 
-import java.util.Properties;
-import java.util.concurrent.ExecutionException;
+import java.util.List;
 
+@Service
 public class SpringProducer {
-    private final KafkaProducer<String, String> producer;
 
-    public SpringProducer() {
-        Properties props = new Properties();
-        props.put("bootstrap.servers", "172.22.57.210:9092");
-        props.setProperty(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-        props.setProperty(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-        producer = new KafkaProducer<>(props);
-    }
+    @Autowired
+    private KafkaTemplate<String, String> kafkaTemplate;
 
-    // Example main method to test sending a message
-    public static void main(String[] args) {
-        SpringProducer producer = new SpringProducer();
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Value("${kafka.topic.name:video-message}") // Default to "telegram-message"
+    private String topic;
+
+    public void sendMessage(List<YouTubeData> data) {
         try {
-            producer.sendMessage("Hello from com.example.realtimeproject.telegrambot.KafkaBotProducer!");
-        } catch (ExecutionException | InterruptedException e) {
-            throw new RuntimeException(e);
-        } finally {
-            producer.close();
-        }
-    }
-
-    public void sendMessage(String message) throws ExecutionException, InterruptedException {
-        producer.send(new ProducerRecord<>("telegram-message", message), new Callback() {
-            @Override
-            public void onCompletion(RecordMetadata metadata, Exception exception) {
-                if (exception != null) {
-                    exception.printStackTrace();
-                } else {
-                    System.out.println("Message sent to topic " + metadata.topic() +
-                            " partition " + metadata.partition() +
-                            " offset " + metadata.offset());
-                }
+            for (YouTubeData item : data) {
+                String json = objectMapper.writeValueAsString(item);
+                kafkaTemplate.send(topic, json);
             }
-        }).get();
-    }
-
-    public void close() {
-        producer.close();
+        } catch (JsonProcessingException e) {
+            e.printStackTrace();
+        }
     }
 }

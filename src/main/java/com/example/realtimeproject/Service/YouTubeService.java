@@ -1,130 +1,125 @@
 package com.example.realtimeproject.Service;
 
-import com.example.realtimeproject.Controller.YouTubeAPIClient;
-import com.example.realtimeproject.Controller.YouTubeApiConstants;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
-import org.json.JSONObject;
-import org.jvnet.hk2.annotations.Service;
+import com.example.realtimeproject.Model.YouTubeApiConstants;
+import com.example.realtimeproject.Model.YouTubeData;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
-
-import java.io.IOException;
-import java.net.URI;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Service
 public class YouTubeService {
-    private final YouTubeAPIClient apiClient = new YouTubeAPIClient();
 
-    public String getInfoFromYouTubeLink(String url) throws IOException {
-        String videoId = extractVideoId(url);
-        if (videoId != null) {
-            return getVideoInfo(videoId); // You can implement this separately
+    private final RestTemplate restTemplate = new RestTemplate();
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public YouTubeData fetchVideoData(String videoId) {
+        try {
+            // Step 1: Get video details
+            String videoDetailsUrl = "https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=" + videoId + "&key=" + YouTubeApiConstants.API_KEY;
+            String videoCommentUrl = "https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId=" + videoId + "&key=" + YouTubeApiConstants.API_KEY;
+            String videoResponse = restTemplate.getForObject(videoDetailsUrl, String.class);
+            JsonNode videoJson = objectMapper.readTree(videoResponse);
+
+            JsonNode videoItems = videoJson.get("items");
+            if (videoItems == null || !videoItems.isArray() || videoItems.isEmpty()) {
+                System.err.println("No video data found for video ID: " + videoId);
+                return null;
+            }
+
+            JsonNode videoItem = videoItems.get(0);
+            JsonNode snippet = videoItem.get("snippet");
+            JsonNode statistics = videoItem.get("statistics");
+
+            if (snippet == null || statistics == null) {
+                System.err.println("Missing snippet or statistics for video ID: " + videoId);
+                return null;
+            }
+
+            // Defensive access
+            String videoImage = snippet.has("thumbnails") ? snippet.get("thumbnails").get("default").get("url").asText() : "No image";
+            String channelId = snippet.has("channelId") ? snippet.get("channelId").asText() : null;
+            String videoTitle = snippet.has("title") ? snippet.get("title").asText() : "Unknown Title";
+            long likeCount = statistics.has("likeCount") ? statistics.get("likeCount").asLong() : 0;
+            long commentCount = statistics.has("commentCount") ? statistics.get("commentCount").asLong() : 0;
+
+            // Step 1.5: Get video top comment
+            String commentResponse = restTemplate.getForObject(videoCommentUrl, String.class);
+            JsonNode commentJson = objectMapper.readTree(commentResponse);
+
+            String topComment = "No comments found";
+            JsonNode commentItems = commentJson.get("items");
+            if (commentItems != null && commentItems.isArray() && !commentItems.isEmpty()) {
+                JsonNode topCommentSnippet = commentItems.get(0)
+                        .get("snippet")
+                        .get("topLevelComment")
+                        .get("snippet")
+                        .get("textDisplay");
+
+                if (topCommentSnippet != null) {
+                    topComment = topCommentSnippet.asText();
+                }
+            }
+
+            if (channelId == null) {
+                System.err.println("Missing channelId for video ID: " + videoId);
+                return null;
+            }
+
+            // Step 2: Get channel statistics
+            String channelUrl = String.format(YouTubeApiConstants.CHANNEL_URL, channelId);
+            String channelResponse = restTemplate.getForObject(channelUrl, String.class);
+            JsonNode channelJson = objectMapper.readTree(channelResponse);
+
+            JsonNode channelItems = channelJson.get("items");
+            if (channelItems == null || !channelItems.isArray() || channelItems.isEmpty()) {
+                System.err.println("No channel data found for channel ID: " + channelId);
+                return null;
+            }
+
+            JsonNode channelItem = channelItems.get(0);
+            JsonNode channelSnippet = channelItem.get("snippet");
+            JsonNode channelStats = channelItem.get("statistics");
+
+            if (channelSnippet == null || channelStats == null) {
+                System.err.println("Missing snippet or statistics for channel ID: " + channelId);
+                return null;
+            }
+
+            String channelTitle = channelSnippet.has("title") ? channelSnippet.get("title").asText() : "Unknown Channel";
+            long subscriberCount = channelStats.has("subscriberCount") ? channelStats.get("subscriberCount").asLong() : 0;
+            long totalVideos = channelStats.has("videoCount") ? channelStats.get("videoCount").asLong() : 0;
+
+            // Step 3: Combine into object
+            YouTubeData data = new YouTubeData();
+            data.setThumbnailUrl(videoImage);
+            data.setVideoTitle(videoTitle);
+            data.setVideoUrl("https://www.youtube.com/watch?v=" + videoId);
+            data.setChannelName(channelTitle);
+            data.setSubscriberCount(subscriberCount);
+            data.setTotalVideos(totalVideos);
+            data.setTotalLikes(likeCount);
+            data.setComments(topComment);
+            data.setTotalComments(commentCount);
+
+            return data;
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
         }
-
-        String channelId = extractChannelId(url);
-        if (channelId != null) {
-            return fetchChannelInfo(channelId);
-        }
-
-        return new JSONObject().put("error", "❌ Unrecognized YouTube link format.").toString();
-    }
-
-    public String getVideoInfo(String videoId) throws IOException {
-        // 🛠️ This must point to the video info API URL
-        String url = String.format(YouTubeApiConstants.VIDEOS_URL, videoId);
-        JsonObject json = apiClient.getJsonFromUrl(url);
-        JsonArray items = json.getAsJsonArray("items");
-
-        if (items == null || items.size() == 0) {
-            return "<div class='alert alert-danger'>❌ Video not found.</div>";
-        }
-
-        JsonObject video = items.get(0).getAsJsonObject();
-        JsonObject snippet = video.getAsJsonObject("snippet");
-        JsonObject statistics = video.getAsJsonObject("statistics");
-
-        String title = snippet.get("title").getAsString();
-        String channelTitle = snippet.get("channelTitle").getAsString();
-        String views = statistics.has("viewCount") ? statistics.get("viewCount").getAsString() : "N/A";
-        String likes = statistics.has("likeCount") ? statistics.get("likeCount").getAsString() : "N/A";
-
-        return String.format(
-                """
-                <div class="card mb-3 shadow-sm">
-                    <div class="card-body">
-                        <h5 class="card-title">🎬 %s</h5>
-                        <p class="card-text">
-                            <strong>📺 Channel:</strong> %s<br>
-                            <strong>👁️ Views:</strong> %s<br>
-                            <strong>👍 Likes:</strong> %s
-                        </p>
-                    </div>
-                </div>
-                """,
-                title, channelTitle, views, likes
-        );
     }
 
     public String extractVideoId(String url) {
         try {
-            if (url.contains("youtu.be/")) {
-                return url.substring(url.lastIndexOf("/") + 1).split("[?&]")[0];
-            }
-
-            if (url.contains("youtube.com/watch")) {
-                URI uri = new URI(url);
-                String query = uri.getQuery();
-                if (query != null) {
-                    for (String param : query.split("&")) {
-                        if (param.startsWith("v=")) {
-                            return param.substring(2);
-                        }
-                    }
-                }
-            }
-
-            if (url.contains("youtube.com/shorts/")) {
-                return url.substring(url.lastIndexOf("/") + 1).split("[?&]")[0];
-            }
-
-            if (url.contains("youtube.com/embed/")) {
-                return url.substring(url.lastIndexOf("/") + 1).split("[?&]")[0];
+            if (url.contains("v=")) {
+                return url.substring(url.indexOf("v=") + 2, url.indexOf("v=") + 13); // standard 11-character ID
+            } else if (url.contains("youtu.be/")) {
+                return url.substring(url.lastIndexOf("/") + 1);
             }
         } catch (Exception e) {
-            System.err.println("Error extracting video ID: " + e.getMessage());
+            e.printStackTrace();
         }
         return null;
     }
-
-    private String extractChannelId(String url) {
-        Matcher matcher = Pattern.compile("youtube\\.com/channel/([^/?&]+)").matcher(url);
-        return matcher.find() ? matcher.group(1) : null;
-    }
-
-    private String fetchChannelInfo(String channelId) {
-        String apiKey = YouTubeApiConstants.API_KEY;
-        String apiUrl = String.format(YouTubeApiConstants.CHANNEL_URL, channelId);
-
-        RestTemplate restTemplate = new RestTemplate();
-        JSONObject response = new JSONObject(restTemplate.getForObject(apiUrl, String.class));
-
-        JSONObject item = response.getJSONArray("items").getJSONObject(0);
-        JSONObject snippet = item.getJSONObject("snippet");
-        JSONObject statistics = item.getJSONObject("statistics");
-
-        JSONObject result = new JSONObject();
-        result.put("channelId", channelId);
-        result.put("channelName", snippet.getString("title"));
-        result.put("description", snippet.optString("description"));
-        result.put("subscribers", statistics.optInt("subscriberCount", 0));
-        result.put("videos", statistics.optInt("videoCount", 0));
-        result.put("views", statistics.optInt("viewCount", 0));
-        result.put("thumbnail", snippet.getJSONObject("thumbnails").getJSONObject("default").getString("url"));
-        result.put("publishedAt", snippet.optString("publishedAt"));
-
-        return result.toString();
-    }
-
 }

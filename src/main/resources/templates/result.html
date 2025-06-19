@@ -1,29 +1,155 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html xmlns:th="http://www.thymeleaf.org" lang="eng">
 <head>
-    <title>YouTube Info Results</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>Video Result</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+            padding: 20px;
+        }
+
+        .video-card {
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            max-width: 320px;
+            width: 100%;
+            transition: transform 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .video-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .video-thumbnail {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .video-content {
+            padding: 15px;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .video-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #222;
+            margin-bottom: 8px;
+        }
+
+        .video-description {
+            font-size: 14px;
+            color: #555;
+            margin: 4px 0;
+        }
+
+        .watch-button {
+            margin-top: 10px;
+            padding: 10px 15px;
+            background-color: #ff0000;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            text-align: center;
+            text-decoration: none;
+            font-weight: bold;
+            transition: background-color 0.3s ease;
+        }
+
+        .watch-button:hover {
+            background-color: #cc0000;
+        }
+
+        .empty-message {
+            text-align: center;
+            font-size: 16px;
+            color: #999;
+        }
+
+        .video-card {
+            display: none; /* Initially hidden */
+        }
+    </style>
 </head>
-<body class="bg-light">
-<div class="container mt-5">
-    <h2 class="mb-4">YouTube Link Info</h2>
+<body>
 
-    <div th:if="${videos.isEmpty()}">
-        <div class="alert alert-warning">No videos found.</div>
-    </div>
+<h1>Video Result</h1>
 
-    <div class="row row-cols-1 row-cols-md-2 g-4" th:if="${not #lists.isEmpty(videos)}">
-        <div class="col" th:each="video : ${videos}">
-            <div class="card shadow-sm">
-                <div class="card-body">
-                    <h5 class="card-title" th:text="'URL: ' + ${video.url}"></h5>
-                    <p class="card-text" th:text="${video.info}"></p>
-                </div>
+<div style="text-align: center; margin-top: 10px;">
+    <a href="/"
+       style="display: inline-block; padding: 10px 20px; background-color: #6c757d; color: #fff; text-decoration: none; border-radius: 6px; font-weight: bold;">
+        ← Back
+    </a>
+</div>
+
+<div th:if="${sentToTelegram}"
+     style="background-color: #fff3cd; color: #856404; padding: 15px; border-radius: 5px; margin: 20px; border: 1px solid #ffeeba; text-align: center;">
+    Some videos were sent to <strong>Telegram</strong> (not shown here).
+</div>
+
+<div th:if="${#lists.isEmpty(videoInfos)}" class="empty-message">
+    <p>No video found for the submitted link.</p>
+</div>
+
+<div class="container" th:if="${!#lists.isEmpty(videoInfos)}">
+    <div th:each="video, iterStat : ${videoInfos}" class="video-card"
+         th:id="'video-card-' + ${iterStat.index}">
+        <img th:src="${video.thumbnailUrl}" alt="Video Thumbnail" class="video-thumbnail"/>
+        <div class="video-content">
+            <div>
+                <p class="video-title" th:text="${video.videoTitle}">Video Title</p>
+                <p class="video-description" th:text="'Channel: ' + ${video.channelName}">Channel Name</p>
+                <p class="video-description" th:text="'Subscribers: ' + ${video.subscriberCount}">Subscribers</p>
+                <p class="video-description" th:text="'Total Videos: ' + ${video.totalVideos}">Total Videos</p>
+                <p class="video-description" th:text="'Comment: ' + ${video.comments}">Top Comment</p>
+                <p class="video-description" th:text="'Likes: ' + ${video.totalLikes}">Total Likes</p>
             </div>
+            <a th:href="${video.videoUrl}" target="_blank" class="watch-button">Watch on YouTube</a>
         </div>
     </div>
-
-    <a href="/" class="btn btn-primary mt-4">Back</a>
 </div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const cards = document.querySelectorAll('.video-card');
+
+        if (cards.length > 0) {
+            // Show the first card immediately
+            cards[0].style.display = 'flex';
+
+            // Show the second card after 5 seconds (if it exists)
+            if (cards.length > 1) {
+                setTimeout(() => {
+                    cards[1].style.display = 'flex';
+                }, 5000);
+            }
+        }
+    });
+</script>
+
 </body>
 </html>
